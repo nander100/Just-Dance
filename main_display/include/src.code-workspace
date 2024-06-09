@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"path": "../../lab7/src"
+		},
+		{
+			"name": "gyro_recive",
+			"path": ".."
+		}
+	],
+	"settings": {}
+}
