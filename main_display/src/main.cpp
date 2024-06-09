@@ -55,7 +55,7 @@ enum startUpStates        { STARTUP_INIT, STARTUP_WAIT, STARTUP_3, STARTUP_2, ST
 enum LCD_states           { FIRST_INIT_LCD, LCD_2, LCD_3, LCD_4, LCD_ON }; // state machine to init the display
 enum moveGeneratorStates  { MGEN_INIT, MGEN_WAIT, MGEN_GEN }; // MGEN = MOVE GENERATOR
 enum displayUpStates      { MGAME_INIT, MGAME_WAIT, MGAME_EARLY, MGAME_DISPLAY_EARLY, MGAME_ONTIME, MGAME_DISPLAY_ONTIME, MGAME_LATE, MGAME_DISPLAY_LATE, MGAME_END_GAME };
-enum moveStates           { MOVE_INIT, MOVE_UP, MOVE_DOWN, MOVE_SIDE } move = MOVE_SIDE;
+enum moveStates           { MOVE_INIT, MOVE_UP, MOVE_DOWN, MOVE_SIDE } move;
 
 // HELPER FUNCTIONS
 bool moveMatch() { // determines if the move from the remote matches that of the current move
