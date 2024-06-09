@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "../.."
+		},
+		{
+			"name": "Remote",
+			"path": "../../Remote"
+		},
+		{
+			"name": "main_display",
+			"path": ".."
+		}
+	],
+	"settings": {}
+}

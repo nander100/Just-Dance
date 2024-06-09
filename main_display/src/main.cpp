@@ -9,14 +9,20 @@
 #include <stdlib.h>
 
 // PIN DEFINE STATEMNETS 
-#define LED_PIN        1 // PD1
-#define RX             0 // PD0
-#define TX             1 // PD1
-#define NUM_TASKS      4 // number of tasks for timerISR to run
-#define START_BUTTON   0 //PC0
-#define TEST_LED       PORTD = SetBit(PORTD, 2, 1) // turns on an LED (FOR DEBUGGING ONLY)
-#define TEST_LED_OFF   PORTD = SetBit(PORTD, 2, 0) // turns on an LED (FOR DEBUGGING ONLY)
-#define TOGGLE_BTN     GetBit(PORTC, 0); // port for the on/off button
+#define LED_PIN          1 // PD1
+#define RX               0 // PD0
+#define TX               1 // PD1
+#define NUM_TASKS        4 // number of tasks for timerISR to run
+#define START_BUTTON     0 //PC0
+#define TEST_LED_R       PORTD = SetBit(PORTD, 2, 1) // turns on an LED (FOR DEBUGGING ONLY)
+#define TEST_LED_R_OFF   PORTD = SetBit(PORTD, 2, 0) // turns on an LED (FOR DEBUGGING ONLY)
+#define TEST_LED_G       PORTD = SetBit(PORTD, 3, 1) // turns on an LED (FOR DEBUGGING ONLY)
+#define TEST_LED_G_OFF   PORTD = SetBit(PORTD, 3, 0) // turns on an LED (FOR DEBUGGING ONLY)
+#define TEST_LED_Y       PORTD = SetBit(PORTD, 4, 1) // turns on an LED (FOR DEBUGGING ONLY)
+#define TEST_LED_Y_OFF   PORTD = SetBit(PORTD, 4, 0) // turns on an LED (FOR DEBUGGING ONLY)
+#define TEST_LED_B       PORTD = SetBit(PORTD, 5, 1) // turns on an LED (FOR DEBUGGING ONLY)
+#define TEST_LED_B_OFF   PORTD = SetBit(PORTD, 5, 0) // turns on an LED (FOR DEBUGGING ONLY)
+#define TOGGLE_BTN       GetBit(PORTC, 0); // port for the on/off button
 
 // DEFINE TASK
 typedef struct _task{
@@ -39,15 +45,16 @@ bool gameStartedFlag = 0; // set to true if the startup animation is complete
 bool gameOverFlag = 0; // set to true once the game is over;
 bool restartGameFlag = 0; // is set to 1 if the player wants to reset the game
 
+
 // keep track of the game of the game states
 unsigned char score = 100; // total score is decreased if the player plays a move late or early
 int moveCnt = 0; // keeps track of the number of moves that have been played
 
 // TASK PERIODS
-const unsigned int GCD_PERIOD = 1;
+const unsigned int GCD_PERIOD = 100;
 const unsigned int DISPLAY_INIT_PERIOD = 200;
 const unsigned int STARTUP_PERIOD = 1000;
-const unsigned int DISPLAY_TEST_PERIOD = 1;
+const unsigned int DISPLAY_TEST_PERIOD = 1000;
 const unsigned int MGEN_PERIOD = 1500;
 
 // STATES (declare the states for each task here)
@@ -61,33 +68,24 @@ enum moveStates           { MOVE_INIT, MOVE_UP, MOVE_DOWN, MOVE_SIDE } move;
 bool moveMatch() { // determines if the move from the remote matches that of the current move
   switch(move) {
     case MOVE_UP:
-      if(is_up && !is_dwn && !is_side) {
-        return true;
-      }
-      else {
-        return false;
-      }
+      if(is_up && !is_dwn && !is_side) {return true; }
+      else { return false; }
       break;
+
     case MOVE_SIDE:
-      if(!is_up && !is_dwn && is_side) {
-        return true;
-      }
-      else {
-        return false;
-      }
+      if(!is_up && !is_dwn && is_side) { return true; }
+      else { return false; }
       break;
 
     case MOVE_DOWN:
-      if(!is_up && is_dwn && !is_side) {
-        return true;
-      }
-      else {
-        return false;
-      }
+      if(!is_up && is_dwn && !is_side) { return true; }
+      else { return false; }
       break;
+
     default:
       return false;
       break;
+
   };
 
   return false;
@@ -168,7 +166,7 @@ int StartupTick(int state) { // period: 1000ms
   case STARTUP_3:
     populate_screen(BLACK);
     draw_large_char(wordX, wordY, '3', WHITE, BLACK, word_size);
-    // TEST_LED;
+    // TEST_LED_R;
     break;
   case STARTUP_2:
     // populate_screen(BLACK);
@@ -185,12 +183,13 @@ int StartupTick(int state) { // period: 1000ms
     break;
   case GAME_STARTED:
     gameStartedFlag = 1;
+    // TEST_LED_Y;
+    break;
   default:
     break;
   }
   return state;
 }
-
 // move generator (in prog.)
 int MGenTick(int state) { // period: 1500ms 
   /* Tick description:
@@ -201,9 +200,12 @@ int MGenTick(int state) { // period: 1500ms
     Inputs:   gameStartedFlag
     Outputs:  move
   */
+  int currMove = -1;
+
   switch(state) { // state transitions
     case MGEN_INIT:
       state = MGEN_WAIT;
+      // TEST_LED_B; 
       break;
     case MGEN_WAIT:
       if(gameStartedFlag) { // waits for the game to start before generating moves
@@ -223,22 +225,39 @@ int MGenTick(int state) { // period: 1500ms
       move = MOVE_INIT; // move is in the initial state. (ensures no display is on while waiting)
       break;
     case MGEN_GEN:
-      int currMove = (rand() % 3); // creates a range of values [0, 2]
-        switch(currMove) { // assigns the value to the move state
-          case 0:
-            move = MOVE_UP;
-            break;
-          case 1:
-            move = MOVE_SIDE;
-            break;
-          case 2:
-            move = MOVE_DOWN;
-            break;
-          default:
-            move = MOVE_INIT;
-        }
+      currMove = (rand() % 3); // creates a range of values [0, 2]
+      switch(currMove) { // assigns the value to the move state
+        case 0:
+          move = MOVE_UP;
+          TEST_LED_R;
+          TEST_LED_B_OFF;
+          TEST_LED_G_OFF;
+          TEST_LED_Y_OFF;
+          break;
+        case 1:
+          move = MOVE_SIDE;
+          TEST_LED_R_OFF;
+          TEST_LED_B;
+          TEST_LED_G_OFF;
+          TEST_LED_Y_OFF;
+          break;
+        case 2:
+          move = MOVE_DOWN;
+          TEST_LED_R_OFF;
+          TEST_LED_B_OFF;
+          TEST_LED_G;
+          TEST_LED_Y_OFF;
+          break;
+        default:
+          move = MOVE_INIT;
+      }
       break;
     default:
+      move = MOVE_INIT;
+      TEST_LED_R_OFF;
+      TEST_LED_B_OFF;
+      TEST_LED_G_OFF;
+      TEST_LED_Y;
       break;
   } // end state actions
   return state;
@@ -399,7 +418,6 @@ int GameClockTick(int state) {
 }
 
 int ReadBluetoothTick(int state){
-
   return state;
 }
 
@@ -407,8 +425,8 @@ enum testStates  { TEST_INIT, TEST_RUN };
 int DisplayTesttTick(int state) {
   switch (state) {
     case TEST_INIT:
-    TEST_LED_OFF;
-      if(gameStartedFlag) {state = TEST_RUN; TEST_LED;}
+    // TEST_LED_R_OFF;
+      if(gameStartedFlag) {state = TEST_RUN; }
       break;
     case TEST_RUN:
       state = TEST_RUN;
@@ -417,36 +435,42 @@ int DisplayTesttTick(int state) {
     default:
       break;
   }
+
   switch (state) {
     case TEST_INIT:
+      // move = MOVE_SIDE;
       break;
     case TEST_RUN:
       switch(move) { // switch statemnt to select which figure to display
         case MOVE_INIT: 
           break;
         case MOVE_UP: 
+          displaySideManOff();
+          displayDownManOff();
           displayUpMan(); 
           break;
-        case MOVE_SIDE: 
-
+        case MOVE_SIDE:
+          displayDownManOff();
+          displayUpManOff();
           displaySideMan();
           break;
         case MOVE_DOWN: 
-    
+          displayUpManOff();
+          displaySideManOff();
           displayDownMan();
           break;
         default:
           break;
       }
 
-      if (move == MOVE_SIDE) {
-        displaySideMan();
-        TEST_LED;
-      }
-      else {
-        TEST_LED_OFF;
-        displayUpManOff();
-      }
+      // if (move == MOVE_INIT) {
+      //   displayUpMan();
+      //   // TEST_LED_R;
+      // }
+      // else {
+      //   // TEST_LED_R_OFF;
+      //   displayUpManOff();
+      // }
       break;  
     default:
       break;
@@ -505,6 +529,7 @@ int main(void) {
   ADC_init();   // initializes ADC
   initUSART();  // initializes USART communication for bluetooth module
   SPI_INIT();   // initializes SIP communication for display
+  srand(1738);
 
   // INITIALIZATIONS
   TimerOn();
