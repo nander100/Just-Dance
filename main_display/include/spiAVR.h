@@ -348,7 +348,7 @@ void displayDownMan() {
         current_line = stickFigureDown[i];
         for (unsigned int j = 0; j < 8; ++j ){
             if (((current_line << j) & 0x80) > 1) {
-                draw_line(xVal, yVal, 5, 5, RED); // draws a 5x5 box to the display
+                draw_line(xVal, yVal, 5, 5, WHITE); // draws a 5x5 box to the display
             }
             xVal+=5;
         }

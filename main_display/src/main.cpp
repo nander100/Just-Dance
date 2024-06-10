@@ -45,23 +45,23 @@ bool gameStartedFlag = 0; // set to true if the startup animation is complete
 bool gameOverFlag = 0; // set to true once the game is over;
 bool restartGameFlag = 0; // is set to 1 if the player wants to reset the game
 
-
 // keep track of the game of the game states
 unsigned char score = 100; // total score is decreased if the player plays a move late or early
 int moveCnt = 0; // keeps track of the number of moves that have been played
 
 // TASK PERIODS
-const unsigned int GCD_PERIOD = 100;
+const unsigned int GCD_PERIOD = 10;
 const unsigned int DISPLAY_INIT_PERIOD = 200;
 const unsigned int STARTUP_PERIOD = 1000;
 const unsigned int DISPLAY_TEST_PERIOD = 1000;
+const unsigned int DISPLAY_MAIN_PERIOD = 10;
 const unsigned int MGEN_PERIOD = 1500;
 
 // STATES (declare the states for each task here)
 enum startUpStates        { STARTUP_INIT, STARTUP_WAIT, STARTUP_3, STARTUP_2, STARTUP_1, STARTUP_GO, GAME_STARTED }; // displays the startup countdown
 enum LCD_states           { FIRST_INIT_LCD, LCD_2, LCD_3, LCD_4, LCD_ON }; // state machine to init the display
 enum moveGeneratorStates  { MGEN_INIT, MGEN_WAIT, MGEN_GEN }; // MGEN = MOVE GENERATOR
-enum displayUpStates      { MGAME_INIT, MGAME_WAIT, MGAME_EARLY, MGAME_DISPLAY_EARLY, MGAME_ONTIME, MGAME_DISPLAY_ONTIME, MGAME_LATE, MGAME_DISPLAY_LATE, MGAME_END_GAME };
+enum displayUpStates      { MGAME_INIT, MGAME_WAIT, MGAME_EARLY, MGAME_DISPLAY_EARLY, MGAME_ONTIME, MGAME_DISPLAY_ONTIME, MGAME_LATE, MGAME_DISPLAY_LATE, MGAME_END_MOVE, MGAME_END_GAME };
 enum moveStates           { MOVE_INIT, MOVE_UP, MOVE_DOWN, MOVE_SIDE } move;
 
 // HELPER FUNCTIONS
@@ -92,7 +92,7 @@ bool moveMatch() { // determines if the move from the remote matches that of the
 }
 
 // TICK FUNCTIONS
-// working init
+// INIT WORKING
 int LCDInitTick(int state) { // period: 200ms 
   switch(state) {
     case FIRST_INIT_LCD:
@@ -128,7 +128,7 @@ int LCDInitTick(int state) { // period: 200ms
   return state;
 }
 
-// working startup
+//  startup (WORKING)
 int StartupTick(int state) { // period: 1000ms 
   char wordX = 64;
   char wordY = 100;
@@ -190,7 +190,8 @@ int StartupTick(int state) { // period: 1000ms
   }
   return state;
 }
-// move generator (in prog.)
+
+// move generator (WORKING!!)
 int MGenTick(int state) { // period: 1500ms 
   /* Tick description:
     This tick function generates each move at random every 1.5s (1500ms).
@@ -200,8 +201,7 @@ int MGenTick(int state) { // period: 1500ms
     Inputs:   gameStartedFlag
     Outputs:  move
   */
-  int currMove = -1;
-
+  static int currMove = -1;
   switch(state) { // state transitions
     case MGEN_INIT:
       state = MGEN_WAIT;
@@ -223,30 +223,19 @@ int MGenTick(int state) { // period: 1500ms
       break;
     case MGEN_WAIT:
       move = MOVE_INIT; // move is in the initial state. (ensures no display is on while waiting)
+      TEST_LED_B;
       break;
     case MGEN_GEN:
-      currMove = (rand() % 3); // creates a range of values [0, 2]
+      currMove = rand() % 3;
       switch(currMove) { // assigns the value to the move state
         case 0:
           move = MOVE_UP;
-          TEST_LED_R;
-          TEST_LED_B_OFF;
-          TEST_LED_G_OFF;
-          TEST_LED_Y_OFF;
           break;
         case 1:
           move = MOVE_SIDE;
-          TEST_LED_R_OFF;
-          TEST_LED_B;
-          TEST_LED_G_OFF;
-          TEST_LED_Y_OFF;
           break;
         case 2:
           move = MOVE_DOWN;
-          TEST_LED_R_OFF;
-          TEST_LED_B_OFF;
-          TEST_LED_G;
-          TEST_LED_Y_OFF;
           break;
         default:
           move = MOVE_INIT;
@@ -254,10 +243,6 @@ int MGenTick(int state) { // period: 1500ms
       break;
     default:
       move = MOVE_INIT;
-      TEST_LED_R_OFF;
-      TEST_LED_B_OFF;
-      TEST_LED_G_OFF;
-      TEST_LED_Y;
       break;
   } // end state actions
   return state;
@@ -285,6 +270,7 @@ int DisplayTick(int state) { // period: 10ms
   switch(state) { // state transitions
     case MGAME_INIT: // init state that transitions into the wait state instantly
       state = MGAME_WAIT;
+      
       break;
     case MGAME_WAIT: // wait for an input from the move generator task
       switch(move) { // switch statemnt to select which figure to display
@@ -293,14 +279,20 @@ int DisplayTick(int state) { // period: 10ms
           break;
         case MOVE_UP: 
           state = MGAME_EARLY;
-          displayUpMan(); 
+          displaySideManOff();
+          displayDownManOff();
+          displayUpMan();  
           break;
         case MOVE_SIDE: 
           state = MGAME_EARLY;
+          displayDownManOff();
+          displayUpManOff();
           displaySideMan();
           break;
         case MOVE_DOWN: 
           state = MGAME_EARLY;
+          displayUpManOff();
+          displaySideManOff();
           displayDownMan();
           break;
         default:
@@ -349,7 +341,7 @@ int DisplayTick(int state) { // period: 10ms
       }
       else if(i >= STAGE_DURATION) { // time runs out to make late move
         i = 0;
-        state = MGAME_WAIT;
+        state = MGAME_END_MOVE;
       }
       break;
 
@@ -357,10 +349,15 @@ int DisplayTick(int state) { // period: 10ms
       if(i >= 50) { // waits out the remainder of the timer
         i = 0; 
         score -=3;
-        state = MGAME_WAIT;
+        state = MGAME_END_MOVE;
+
       }
       break;
-
+    case MGAME_END_MOVE:
+      if(i >= 50) {
+        state = MGAME_WAIT;
+      }
+      break; 
     default:
       break;
     }; // end state transitions
@@ -399,7 +396,9 @@ int DisplayTick(int state) { // period: 10ms
       displayLate();
       ++i;
       break;
-
+    case MGAME_END_MOVE:
+      ++i;
+      break;
     default:
       break;
     }; // end state actions
@@ -462,15 +461,6 @@ int DisplayTesttTick(int state) {
         default:
           break;
       }
-
-      // if (move == MOVE_INIT) {
-      //   displayUpMan();
-      //   // TEST_LED_R;
-      // }
-      // else {
-      //   // TEST_LED_R_OFF;
-      //   displayUpManOff();
-      // }
       break;  
     default:
       break;
@@ -495,10 +485,8 @@ int main(void) {
   DDRB = 0xFF; PORTB = ~DDRB;
   DDRC = 0xFF; PORTC = ~DDRC;  
 
-  // TASK INIT
-  unsigned char i = 0;
-
   // INIT FOR THE SETUP
+  unsigned char i = 0;
   tasks[i].period = DISPLAY_INIT_PERIOD;
   tasks[i].state = FIRST_INIT_LCD;
   tasks[i].elapsedTime = tasks[i].period;
@@ -519,11 +507,18 @@ int main(void) {
   tasks[i].TickFct = &MGenTick;
   i++;
 
-  // INIT FOR THE MAIN DISPLAY
-  tasks[i].period = DISPLAY_TEST_PERIOD;
-  tasks[i].state = TEST_INIT;
+  // INIT FOR THE TEST DISPLAY
+  // tasks[i].period = DISPLAY_TEST_PERIOD;
+  // tasks[i].state = TEST_INIT;
+  // tasks[i].elapsedTime = tasks[i].period;
+  // tasks[i].TickFct = &DisplayTesttTick;
+  // i++;
+
+  // INIT FOT THE MAIN DISPLAY FUNCTION
+  tasks[i].period = DISPLAY_MAIN_PERIOD;
+  tasks[i].state = MGAME_INIT;
   tasks[i].elapsedTime = tasks[i].period;
-  tasks[i].TickFct = &DisplayTesttTick;
+  tasks[i].TickFct = &DisplayTick;
   i++;
 
   ADC_init();   // initializes ADC
