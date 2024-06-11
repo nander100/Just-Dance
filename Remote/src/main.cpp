@@ -9,13 +9,13 @@
 // // #include "serialATmega.h"
 // // #define NUM_TASKS 0// DEFINE STATEMNETS 
 
-// // // DEFINE TASK
-// // typedef struct _task{
-// //   signed   char state;    //Task's current state
-// //   unsigned long period;     //Task period
-// //   unsigned long elapsedTime;  //Time elapsed since last task tick
-// //   int (*TickFct)(int);    //Task tick function
-// // } task;
+// // DEFINE TASK
+// typedef struct _task{
+//   signed   char state;    //Task's current state
+//   unsigned long period;     //Task period
+//   unsigned long elapsedTime;  //Time elapsed since last task tick
+//   int (*TickFct)(int);    //Task tick function
+// } task;
 
 // // task tasks[NUM_TASKS]; // DECLARE TASK ARRAY
 
@@ -276,6 +276,7 @@
 #include <stdio.h>
 #include "usart_ATmega328p.h" 
 #include "gyro.h"
+#include "timerISR.h"
 
 #define F_CPU 16000000UL   // CPU clock speed
 #define F_SCL 100000UL     // SCL clock speed (100kHz)
@@ -347,20 +348,103 @@ void scale_data_gyro(void) {
     rotY = gyroY / 131.0;
     rotZ = gyroZ / 131.0;
 }
+// enum BTSendStates { BT_SEND_INIT, BT_WAIT_SEND_READY, BT_SEND_X, BT_WAIT_X, BT_SEND_Y, BT_WAIT_Y, BT_SEND_Z, BT_WAIT_Z, BT_WAIT_RECEIVED };
+enum BTSendStates { BT_SEND_INIT, BT_SEND };
+unsigned char sendGyroVals = 0x00;
+int SendBluetoothTick(int state) {
+  switch(state) {
+    case BT_SEND_INIT:
+      state = BT_SEND;
+      break;
+    case BT_SEND:
+      // USART_Send(0xFC); // flag for start
+      if(gForceZ > 0.8) {
+        sendGyroVals += 1;
+        sendGyroVals = sendGyroVals << 1;
+      }
+      else {
+        sendGyroVals = sendGyroVals << 1;
+      }
+      if(gForceY > 0.8) {
+        sendGyroVals += 1;
+        sendGyroVals = sendGyroVals << 1;
+      }
+      else {
+        sendGyroVals = sendGyroVals << 1;
+      }
+      if(gForceX > 0.8) {
+        sendGyroVals += 1;
+        sendGyroVals = sendGyroVals << 1;
+      }
+      else {
+        sendGyroVals = sendGyroVals << 1;
+      }
+      USART_Send(sendGyroVals);
+      sendGyroVals = 0x00;
+      break;
+    default:
+      break;
+  }
+  return state;
+}
+
+// DEFINE TASK
+typedef struct _task{
+  signed   char state;    //Task's current state
+  unsigned long period;     //Task period
+  unsigned long elapsedTime;  //Time elapsed since last task tick
+  int (*TickFct)(int);    //Task tick function
+} task;
+
+
+
+#define NUM_TASKS 1
+unsigned int GCD_PERIOD = 10;
+unsigned int BT_SEND_PERIOD = 10;
+task tasks[NUM_TASKS]; // DECLARE TASK ARRAY
+
+void TimerISR() {
+  read_acl();
+  scale_data_acl();
+  read_gyro();
+  scale_data_gyro();
+  for ( unsigned int i = 0; i < NUM_TASKS; i++ ) {                   // Iterate through each task in the task array
+    if ( tasks[i].elapsedTime == tasks[i].period ) {           // Check if the task is ready to tick
+      tasks[i].state = tasks[i].TickFct(tasks[i].state); // Tick and set the next state for this task
+      tasks[i].elapsedTime = 0;                          // Reset the elapsed time for the next tick
+    }
+    tasks[i].elapsedTime += GCD_PERIOD;                        // Increment the elapsed time by GCD_PERIOD
+  }
+}
 
 int main(void) {
     serial_init(9600);
+    // initUSART();
     i2c_init();
+    // TimerSet(GCD_PERIOD);
+    // TimerOn();
     setup_mpu6050();
     DDRD = 0xFE; PORTD = ~DDRD; //1111 1110
     DDRC = 0xFF; PORTC = 0x00;
 
     while (1) {
-        read_acl();
-        scale_data_acl();
-        read_gyro();
-        scale_data_gyro();
-        USART_Send(gForceZ);
+      sendGyroVals = 0x00;
+      read_acl();
+      scale_data_acl();
+      read_gyro();
+      scale_data_gyro();
+
+      if(fabs(gForceZ) > 0.8) {
+        sendGyroVals += 0x04;
+      }
+      if(fabs(gForceY) > 0.8) {
+        sendGyroVals += 0x02;
+      }
+      if(fabs(gForceX) > 0.8) {
+        sendGyroVals += 0x01;
+      }
+
+      USART_Send(sendGyroVals);
     }
 
     return 0;
