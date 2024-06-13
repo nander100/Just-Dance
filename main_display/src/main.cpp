@@ -12,7 +12,7 @@
 #define LED_PIN          1 // PD1
 #define RX               0 // PD0
 #define TX               1 // PD1
-#define NUM_TASKS        4 // number of tasks for timerISR to run
+#define NUM_TASKS        5 // number of tasks for timerISR to run
 #define START_BUTTON     0 //PC0
 #define TEST_LED_R       PORTD = SetBit(PORTD, 2, 1) // turns on an LED (FOR DEBUGGING ONLY)
 #define TEST_LED_R_OFF   PORTD = SetBit(PORTD, 2, 0) // turns on an LED (FOR DEBUGGING ONLY)
@@ -55,6 +55,7 @@ const unsigned int DISPLAY_INIT_PERIOD = 200;
 const unsigned int STARTUP_PERIOD = 1000;
 const unsigned int DISPLAY_TEST_PERIOD = 1000;
 const unsigned int DISPLAY_MAIN_PERIOD = 10;
+const unsigned int BT_PERIOD = 10;
 const unsigned int MGEN_PERIOD = 1500;
 
 // STATES (declare the states for each task here)
@@ -62,24 +63,25 @@ enum startUpStates        { STARTUP_INIT, STARTUP_WAIT, STARTUP_3, STARTUP_2, ST
 enum LCD_states           { FIRST_INIT_LCD, LCD_2, LCD_3, LCD_4, LCD_ON }; // state machine to init the display
 enum moveGeneratorStates  { MGEN_INIT, MGEN_WAIT, MGEN_GEN }; // MGEN = MOVE GENERATOR
 enum displayUpStates      { MGAME_INIT, MGAME_WAIT, MGAME_EARLY, MGAME_DISPLAY_EARLY, MGAME_ONTIME, MGAME_DISPLAY_ONTIME, MGAME_LATE, MGAME_DISPLAY_LATE, MGAME_END_MOVE, MGAME_END_GAME };
+enum bluetoothStates      { BT_INIT, BT_RECEIVE };
 enum moveStates           { MOVE_INIT, MOVE_UP, MOVE_DOWN, MOVE_SIDE } move;
 
 // HELPER FUNCTIONS
 bool moveMatch() { // determines if the move from the remote matches that of the current move
   switch(move) {
     case MOVE_UP:
-      if(is_up && !is_dwn && !is_side) {return true; }
-      else { return false; }
+      if(is_up && !is_dwn && !is_side) { TEST_LED_R; return true; }
+      else { TEST_LED_R_OFF; return false; }
       break;
 
     case MOVE_SIDE:
-      if(!is_up && !is_dwn && is_side) { return true; }
-      else { return false; }
+      if(!is_up && !is_dwn && is_side) { TEST_LED_G; return true; }
+      else { TEST_LED_G_OFF; return false; }
       break;
 
     case MOVE_DOWN:
-      if(!is_up && is_dwn && !is_side) { return true; }
-      else { return false; }
+      if(!is_up && is_dwn && !is_side) { TEST_LED_Y; return true; }
+      else { TEST_LED_Y_OFF; return false; }
       break;
 
     default:
@@ -184,6 +186,7 @@ int StartupTick(int state) { // period: 1000ms
   case GAME_STARTED:
     gameStartedFlag = 1;
     // TEST_LED_Y;
+      // TEST_LED_B;
     break;
   default:
     break;
@@ -223,7 +226,6 @@ int MGenTick(int state) { // period: 1500ms
       break;
     case MGEN_WAIT:
       move = MOVE_INIT; // move is in the initial state. (ensures no display is on while waiting)
-      TEST_LED_B;
       break;
     case MGEN_GEN:
       currMove = rand() % 3;
@@ -269,8 +271,17 @@ int DisplayTick(int state) { // period: 10ms
   const char STAGE_DURATION = 50; // each stage (early, on time, and late) will last 50 cycles. (50 cycles of 10ms per cycle = 500ms = 0.5s)
   switch(state) { // state transitions
     case MGAME_INIT: // init state that transitions into the wait state instantly
-      state = MGAME_WAIT;
-      
+      if(gameStartedFlag) {
+        state = MGAME_WAIT;
+        char wordX = 64;
+        char wordY = 100;
+        char word_size = 2;
+        wordX-=20;
+        draw_large_char(wordX, wordY, 'G', BLACK, BLACK, word_size);
+        wordX+=20;
+        draw_large_char(wordX, wordY, 'O', BLACK, BLACK, word_size);
+      }
+      // populate_screen(BLACK);
       break;
     case MGAME_WAIT: // wait for an input from the move generator task
       switch(move) { // switch statemnt to select which figure to display
@@ -367,7 +378,6 @@ int DisplayTick(int state) { // period: 10ms
       // no state actions
       break;
     case MGAME_WAIT:
-      populate_screen(BLACK);
       break;
 
     case MGAME_EARLY:
@@ -415,8 +425,44 @@ int GameClockTick(int state) {
   */
   return state;
 }
+bool x = 0;
+bool y = 0;
+bool z = 0;
 
-int ReadBluetoothTick(int state){
+ // working BT read function
+int ReadBluetoothTick(int state){ 
+  /* Reads and interprets the bluetooth signal from the remote */
+  unsigned char getGyroVals = 0x00;
+  switch (state) {
+    case BT_INIT:
+      if(gameStartedFlag) {
+        state = BT_RECEIVE;
+      }
+      break;
+    case BT_RECEIVE:
+      TEST_LED_B;
+      getGyroVals = USART_Receive();
+      // TEST_LED_B;
+
+
+      // assign the global variables to determine when there is sufficient force to determine the x, y, and z directions
+      is_side = getGyroVals & 0x01;
+      is_dwn = getGyroVals & 0x02;
+      is_up = getGyroVals & 0x04;
+      
+      PORTD = SetBit(PORTD, 2, is_up);
+      PORTD = SetBit(PORTD, 3, is_side);
+      PORTD = SetBit(PORTD, 4, is_dwn);
+      
+      getGyroVals = 0x00;
+      TEST_LED_B_OFF;
+      break;
+    default:
+    break;
+  }
+  
+  
+
   return state;
 }
 
@@ -493,14 +539,14 @@ int main(void) {
   tasks[i].TickFct = &LCDInitTick;
   i++;
 
-  // INIT FOR THE STARTUP FUNCTION
+  // // INIT FOR THE STARTUP FUNCTION
   tasks[i].period = STARTUP_PERIOD;
   tasks[i].state = STARTUP_INIT;
   tasks[i].elapsedTime = tasks[i].period;
   tasks[i].TickFct = &StartupTick;
   i++;
 
-  // INIT FOR THE MOVE GENERATOR
+  // // INIT FOR THE MOVE GENERATOR
   tasks[i].period = MGEN_PERIOD;
   tasks[i].state = MGEN_INIT;
   tasks[i].elapsedTime = tasks[i].period;
@@ -520,7 +566,14 @@ int main(void) {
   tasks[i].elapsedTime = tasks[i].period;
   tasks[i].TickFct = &DisplayTick;
   i++;
-
+  
+  // INIT FOR THE BLUETOOTH COMMUNICATION
+  tasks[i].period = BT_PERIOD;
+  tasks[i].state = BT_INIT;
+  tasks[i].elapsedTime = tasks[i].period;
+  tasks[i].TickFct = &ReadBluetoothTick;
+  i++;
+  
   ADC_init();   // initializes ADC
   initUSART();  // initializes USART communication for bluetooth module
   SPI_INIT();   // initializes SIP communication for display
@@ -529,6 +582,6 @@ int main(void) {
   // INITIALIZATIONS
   TimerOn();
   TimerSet(GCD_PERIOD);
-  while (1) {  } // TIMER ISR FUNCTION WILL INTURUPT AT GCD_PERIOD
+  while (1) { } // TIMER ISR FUNCTION WILL INTURUPT AT GCD_PERIOD
   return 0;
 }
