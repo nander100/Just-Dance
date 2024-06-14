@@ -6,6 +6,7 @@
 #include "helper.h"   
 #include "usart_ATmega328p.h" 
 #include "spiAVR.h"
+#include "serialATmega.h"
 #include <stdlib.h>
 
 // PIN DEFINE STATEMNETS 
@@ -22,7 +23,7 @@
 #define TEST_LED_Y_OFF   PORTD = SetBit(PORTD, 4, 0) // turns on an LED (FOR DEBUGGING ONLY)
 #define TEST_LED_B       PORTD = SetBit(PORTD, 5, 1) // turns on an LED (FOR DEBUGGING ONLY)
 #define TEST_LED_B_OFF   PORTD = SetBit(PORTD, 5, 0) // turns on an LED (FOR DEBUGGING ONLY)
-#define TOGGLE_BTN       GetBit(PORTC, 0); // port for the on/off button
+#define RESET            GetBit(PORTC, 0) // port for the on/off button
 
 // DEFINE TASK
 typedef struct _task{
@@ -35,9 +36,9 @@ task tasks[NUM_TASKS]; // DECLARE TASK ARRAY
 
 // GLOBAL VARIABLES
 // variables to store the force acting in each direction
-bool is_up   = 0;
-bool is_side = 0;
-bool is_dwn  = 0;
+bool z   = 0;
+bool x = 0;
+bool y  = 0;
 
 // flags
 bool displayInitialized = 0; // will be set to one once the display has ran through the init prosses
@@ -53,10 +54,10 @@ int moveCnt = 0; // keeps track of the number of moves that have been played
 const unsigned int GCD_PERIOD = 10;
 const unsigned int DISPLAY_INIT_PERIOD = 200;
 const unsigned int STARTUP_PERIOD = 1000;
-const unsigned int DISPLAY_TEST_PERIOD = 1000;
+const unsigned int DISPLAY_TEST_PERIOD = 10;
 const unsigned int DISPLAY_MAIN_PERIOD = 10;
 const unsigned int BT_PERIOD = 10;
-const unsigned int MGEN_PERIOD = 1500;
+const unsigned int MGEN_PERIOD = 50;
 
 // STATES (declare the states for each task here)
 enum startUpStates        { STARTUP_INIT, STARTUP_WAIT, STARTUP_3, STARTUP_2, STARTUP_1, STARTUP_GO, GAME_STARTED }; // displays the startup countdown
@@ -70,17 +71,17 @@ enum moveStates           { MOVE_INIT, MOVE_UP, MOVE_DOWN, MOVE_SIDE } move;
 bool moveMatch() { // determines if the move from the remote matches that of the current move
   switch(move) {
     case MOVE_UP:
-      if(is_up && !is_dwn && !is_side) { TEST_LED_R; return true; }
+      if(z && !y && !x) { TEST_LED_R; return true; }
       else { TEST_LED_R_OFF; return false; }
       break;
 
     case MOVE_SIDE:
-      if(!is_up && !is_dwn && is_side) { TEST_LED_G; return true; }
+      if(!z && !y && x) { TEST_LED_G; return true; }
       else { TEST_LED_G_OFF; return false; }
       break;
 
     case MOVE_DOWN:
-      if(!is_up && is_dwn && !is_side) { TEST_LED_Y; return true; }
+      if(!z && y && !x) { TEST_LED_Y; return true; }
       else { TEST_LED_Y_OFF; return false; }
       break;
 
@@ -137,12 +138,14 @@ int StartupTick(int state) { // period: 1000ms
   char word_size = 2;
   switch (state) { // state transitions
   case STARTUP_INIT:
-    state = STARTUP_WAIT;
+    if(displayInitialized ) {
+  
+      state = STARTUP_WAIT;
+    }
     break;
   case STARTUP_WAIT:
-    if(displayInitialized /* && startup pin*/) {
+      populate_screen(BLACK);
       state = STARTUP_3;
-    }
     break;
   case STARTUP_3:
     state = STARTUP_2;
@@ -167,6 +170,7 @@ int StartupTick(int state) { // period: 1000ms
     break;
   case STARTUP_3:
     populate_screen(BLACK);
+    // draw_line(129, 0, 128, 128, BLACK);
     draw_large_char(wordX, wordY, '3', WHITE, BLACK, word_size);
     // TEST_LED_R;
     break;
@@ -185,6 +189,12 @@ int StartupTick(int state) { // period: 1000ms
     break;
   case GAME_STARTED:
     gameStartedFlag = 1;
+    if(ADC_read(0) < 900) {
+      gameStartedFlag = 0;
+      // TEST_LED_B;
+      state = STARTUP_INIT;
+      
+    }
     // TEST_LED_Y;
       // TEST_LED_B;
     break;
@@ -228,15 +238,12 @@ int MGenTick(int state) { // period: 1500ms
       move = MOVE_INIT; // move is in the initial state. (ensures no display is on while waiting)
       break;
     case MGEN_GEN:
-      currMove = rand() % 3;
+      currMove = rand() % 2;
       switch(currMove) { // assigns the value to the move state
         case 0:
           move = MOVE_UP;
           break;
         case 1:
-          move = MOVE_SIDE;
-          break;
-        case 2:
           move = MOVE_DOWN;
           break;
         default:
@@ -251,8 +258,47 @@ int MGenTick(int state) { // period: 1500ms
 }
 
 // display the up character and prosses the data from the bluetooth module
-int DisplayTick(int state) { // period: 10ms
-  /* Tick Description:
+
+ // working BT read function
+int ReadBluetoothTick(int state){ 
+  /* Reads and interprets the bluetooth signal from the remote */
+  unsigned char getGyroVals = 0x00;
+  switch (state) {
+    case BT_INIT:
+      if(gameStartedFlag) {
+        state = BT_RECEIVE;
+      }
+      break;
+    case BT_RECEIVE:
+      if(!USART_HasReceived()) break;
+      getGyroVals = USART_Receive();
+      // TEST_LED_B;
+
+
+      // assign the global variables to determine when there is sufficient force to determine the x, y, and z directions
+      x = getGyroVals & 0x01;
+      y = getGyroVals & 0x02;
+      z = getGyroVals & 0x04;
+      
+      PORTD = SetBit(PORTD, 2, z);
+      PORTD = SetBit(PORTD, 3, x);
+      PORTD = SetBit(PORTD, 4, y);
+
+      getGyroVals = 0x00;
+      TEST_LED_B_OFF;
+      break;
+    default:
+    break;
+  }
+  return state;
+}
+
+unsigned char i = 0;
+unsigned char j = 0; // keeps track of how long the remote senses down
+unsigned char cnt = 0; // keeps track of how many ticks have gone by to change to the next move
+enum testStates  { TEST_INIT, DISPLAY_CHARACTERS, WAIT_FOR_MOVE, CHECK_MOVE, NEW_DISPLAY_WAIT, END_GAME }; 
+int DisplayTesttTick(int state) {
+    /* Tick Description:
      Here, the stick figure for the all positions is drawn. This tick will 
      also print out "NICE!", "EARLY!", or "LATE" to the LCD depending on 
      the input from the bluetooth sensor.
@@ -266,251 +312,138 @@ int DisplayTick(int state) { // period: 10ms
      Inputs: move, is_up, is_down, is_side
      Outputs: pixels to the display
   */
+  static char currMove = 0;
 
-  static unsigned char i = 0;
-  const char STAGE_DURATION = 50; // each stage (early, on time, and late) will last 50 cycles. (50 cycles of 10ms per cycle = 500ms = 0.5s)
-  switch(state) { // state transitions
-    case MGAME_INIT: // init state that transitions into the wait state instantly
+  switch (state) {
+    case TEST_INIT:
       if(gameStartedFlag) {
-        state = MGAME_WAIT;
+        state = DISPLAY_CHARACTERS; 
         char wordX = 64;
         char wordY = 100;
         char word_size = 2;
         wordX-=20;
         draw_large_char(wordX, wordY, 'G', BLACK, BLACK, word_size);
         wordX+=20;
-        draw_large_char(wordX, wordY, 'O', BLACK, BLACK, word_size);
+        draw_large_char(wordX, wordY, 'O', BLACK, BLACK, word_size);  
+        displayRed();
+        displayGreen();
       }
-      // populate_screen(BLACK);
       break;
-    case MGAME_WAIT: // wait for an input from the move generator task
+    case DISPLAY_CHARACTERS:
       switch(move) { // switch statemnt to select which figure to display
-        case MOVE_INIT: 
-          state = MGAME_WAIT; // game is still in its init state and has not received any input from the move gen task
-          break;
-        case MOVE_UP: 
-          state = MGAME_EARLY;
-          displaySideManOff();
-          displayDownManOff();
-          displayUpMan();  
-          break;
-        case MOVE_SIDE: 
-          state = MGAME_EARLY;
-          displayDownManOff();
-          displayUpManOff();
-          displaySideMan();
-          break;
-        case MOVE_DOWN: 
-          state = MGAME_EARLY;
-          displayUpManOff();
-          displaySideManOff();
-          displayDownMan();
-          break;
-        default:
-          break;
-      }
-      break;
+          case MOVE_INIT: 
+            break;
+          case MOVE_UP: 
+            displayDownManOff();
+            displayUpMan();
+            break;
+          case MOVE_DOWN: 
+            displayUpManOff();
+            displayDownMan();
 
-    case MGAME_EARLY:
-      if (moveMatch()) { // checks if the move is made
-        state = MGAME_DISPLAY_EARLY;
-      }
-      else if(i >= STAGE_DURATION) { // time runs out if a move is made to early
-        i = 0; 
-        state = MGAME_ONTIME;
-      }
-      break;
+            break;
+          default:
+            break;
+        }
 
-    case MGAME_DISPLAY_EARLY:
-      if(i >= 150) { // waits out the remainder of the timer
-        i = 0;
+        state = WAIT_FOR_MOVE;
+        currMove = move;
+        break;
+    case WAIT_FOR_MOVE:
+      if(i >= 30 || j >= 30) {
+        state = CHECK_MOVE;
+
+        cnt = 0;
+      }
+      else if(cnt >= 250) {
+        displayRed();
         score -= 3;
-        state = MGAME_WAIT;
-      }
-      break;
-
-    case MGAME_ONTIME:
-      if (moveMatch()) { // checks if the move is made
-        state = MGAME_DISPLAY_ONTIME;
-      }
-      else if(i >= STAGE_DURATION) { // time runs out to make on time move
-        i = 0;
-        state = MGAME_LATE;
-      }
-      break;
-
-    case MGAME_DISPLAY_ONTIME: 
-      if(i >= 100) { // waits out the remainder of the timer
-        i = 0;
-        state = MGAME_WAIT;
-      }
-      break;
-
-    case MGAME_LATE:
-      if (moveMatch()) { // checks if the move is made
-        state = MGAME_DISPLAY_LATE;
-      }
-      else if(i >= STAGE_DURATION) { // time runs out to make late move
-        i = 0;
-        state = MGAME_END_MOVE;
-      }
-      break;
-
-    case MGAME_DISPLAY_LATE:
-      if(i >= 50) { // waits out the remainder of the timer
-        i = 0; 
-        score -=3;
-        state = MGAME_END_MOVE;
+        state = DISPLAY_CHARACTERS;
+        // TEST_LED_Y;
+        cnt = 0;
+        moveCnt ++;
 
       }
-      break;
-    case MGAME_END_MOVE:
-      if(i >= 50) {
-        state = MGAME_WAIT;
+      case NEW_DISPLAY_WAIT:
+        // TEST_LED_B;
+        if(moveCnt >= 10) {
+          state = END_GAME; 
+          populate_screen(BLACK);     
+          draw_large_char(30, 60, (score /10) + 48, WHITE,BLACK, 2); 
+          draw_large_char(50, 60, (score %10) + 48, WHITE,BLACK, 2);
+        
+        }
+        else if(cnt >= 250) {
+          TEST_LED_B_OFF;
+          state = DISPLAY_CHARACTERS;
+          cnt = 0;
+        }
+        break;
+    case END_GAME:
+      if(ADC_read(0) < 900 && !gameStartedFlag){
+        state = TEST_INIT;
+        moveCnt = 0;
+        redXlocation = RINIT;
+        greenXlocation = GINIT;
+        score = 100;
+
       }
       break; 
     default:
       break;
-    }; // end state transitions
+  }
 
-  switch(state) { // state actions
-    case MGAME_INIT:
+  switch (state) {
+    case TEST_INIT:
       // no state actions
       break;
-    case MGAME_WAIT:
+    case DISPLAY_CHARACTERS:
       break;
 
-    case MGAME_EARLY:
-      ++i;
-      break;
-
-    case MGAME_DISPLAY_EARLY:
-      displayEarly();
-      ++i;
-      break;
-
-    case MGAME_ONTIME:
-      ++i;
-      break;
-
-    case MGAME_DISPLAY_ONTIME:
-      displayNice();
-      ++i;
-      break;
-
-    case MGAME_LATE:
-      ++i;      
-      break;
-
-    case MGAME_DISPLAY_LATE:
-      displayLate();
-      ++i;
-      break;
-    case MGAME_END_MOVE:
-      ++i;
-      break;
-    default:
-      break;
-    }; // end state actions
-
-  return state;
-}
-
-int GameClockTick(int state) {
-  /*
-    Keep track of the number of moves a player has made to determine if the game should end or not
-
-    Inputs: moveCnt
-    Outputs: gameOverFlag
-  */
-  return state;
-}
-bool x = 0;
-bool y = 0;
-bool z = 0;
-
- // working BT read function
-int ReadBluetoothTick(int state){ 
-  /* Reads and interprets the bluetooth signal from the remote */
-  unsigned char getGyroVals = 0x00;
-  switch (state) {
-    case BT_INIT:
-      if(gameStartedFlag) {
-        state = BT_RECEIVE;
+    case WAIT_FOR_MOVE: 
+      if(x && !y && !z) {
+        ++j;  // down
       }
-      break;
-    case BT_RECEIVE:
-      TEST_LED_B;
-      getGyroVals = USART_Receive();
-      // TEST_LED_B;
-
-
-      // assign the global variables to determine when there is sufficient force to determine the x, y, and z directions
-      is_side = getGyroVals & 0x01;
-      is_dwn = getGyroVals & 0x02;
-      is_up = getGyroVals & 0x04;
-      
-      PORTD = SetBit(PORTD, 2, is_up);
-      PORTD = SetBit(PORTD, 3, is_side);
-      PORTD = SetBit(PORTD, 4, is_dwn);
-      
-      getGyroVals = 0x00;
-      TEST_LED_B_OFF;
-      break;
-    default:
-    break;
-  }
-  
-  
-
-  return state;
-}
-
-enum testStates  { TEST_INIT, TEST_RUN }; 
-int DisplayTesttTick(int state) {
-  switch (state) {
-    case TEST_INIT:
-    // TEST_LED_R_OFF;
-      if(gameStartedFlag) {state = TEST_RUN; }
-      break;
-    case TEST_RUN:
-      state = TEST_RUN;
-
-      break;  
-    default:
-      break;
-  }
-
-  switch (state) {
-    case TEST_INIT:
-      // move = MOVE_SIDE;
-      break;
-    case TEST_RUN:
-      switch(move) { // switch statemnt to select which figure to display
-        case MOVE_INIT: 
-          break;
-        case MOVE_UP: 
-          displaySideManOff();
-          displayDownManOff();
-          displayUpMan(); 
-          break;
-        case MOVE_SIDE:
-          displayDownManOff();
-          displayUpManOff();
-          displaySideMan();
-          break;
-        case MOVE_DOWN: 
-          displayUpManOff();
-          displaySideManOff();
-          displayDownMan();
-          break;
-        default:
-          break;
+      else if(!z && y && !x) {
+        ++i; // up
       }
+      ++cnt; // always increase the count after each tick to keep track of the time of each move
+      break;
+
+    case CHECK_MOVE:
+    // TEST_LED_G;
+      state = NEW_DISPLAY_WAIT;
+      if(j >=30 && currMove == MOVE_DOWN) {
+        displayGreen();
+      }
+      else if(j >=30 && currMove == MOVE_UP){
+        displayRed();
+        score-=3;
+      }
+      else if(i >=30 && currMove == MOVE_DOWN) {
+        displayRed();
+        score-=3;
+      }
+      else if(i >=30 && currMove == MOVE_UP) {
+        displayGreen();
+      }
+      else {
+        populate_screen(RED);
+      }
+      i = 0;
+      j = 0;
+      moveCnt ++;
+      break;
+    case NEW_DISPLAY_WAIT:
+      cnt++;
       break;  
+    case END_GAME:
+
+
     default:
       break;
   }
+
   return state;
 }
 
@@ -529,7 +462,7 @@ int main(void) {
   // INITIALIZE PORT AND DDR REGISTERS
   DDRD = 0xFE; PORTD = ~DDRD; //1111 1110
   DDRB = 0xFF; PORTB = ~DDRB;
-  DDRC = 0xFF; PORTC = ~DDRC;  
+  DDRC = 0x00; PORTC = ~DDRC;  
 
   // INIT FOR THE SETUP
   unsigned char i = 0;
@@ -554,18 +487,18 @@ int main(void) {
   i++;
 
   // INIT FOR THE TEST DISPLAY
-  // tasks[i].period = DISPLAY_TEST_PERIOD;
-  // tasks[i].state = TEST_INIT;
-  // tasks[i].elapsedTime = tasks[i].period;
-  // tasks[i].TickFct = &DisplayTesttTick;
-  // i++;
+  tasks[i].period = DISPLAY_TEST_PERIOD;
+  tasks[i].state = TEST_INIT;
+  tasks[i].elapsedTime = tasks[i].period;
+  tasks[i].TickFct = &DisplayTesttTick;
+  i++;
 
   // INIT FOT THE MAIN DISPLAY FUNCTION
-  tasks[i].period = DISPLAY_MAIN_PERIOD;
-  tasks[i].state = MGAME_INIT;
-  tasks[i].elapsedTime = tasks[i].period;
-  tasks[i].TickFct = &DisplayTick;
-  i++;
+  // tasks[i].period = DISPLAY_MAIN_PERIOD;
+  // tasks[i].state = MGAME_INIT;
+  // tasks[i].elapsedTime = tasks[i].period;
+  // tasks[i].TickFct = &DisplayTick;
+  // i++;
   
   // INIT FOR THE BLUETOOTH COMMUNICATION
   tasks[i].period = BT_PERIOD;
@@ -582,6 +515,7 @@ int main(void) {
   // INITIALIZATIONS
   TimerOn();
   TimerSet(GCD_PERIOD);
-  while (1) { } // TIMER ISR FUNCTION WILL INTURUPT AT GCD_PERIOD
+  // serial_println(ADC_read(0));
+  while (1) {  } // TIMER ISR FUNCTION WILL INTURUPT AT GCD_PERIOD
   return 0;
 }

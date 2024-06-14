@@ -19,6 +19,21 @@
 #define RST 4 // PB0
 #define CS 2 // PB2
 
+#define BLACK           0x0000
+#define WHITE           0xFFFF
+#define BLUE            0xF800
+#define GREEN           0x07E0
+#define RED             0x001F
+#define YELLOW          0x07FF
+#define PINK            0xF81F
+#define CYAN            0xFFE0
+#define MAGENTA         0xFC18
+#define GRAY            0x8410
+
+#define RINIT 1
+#define GINIT 1
+
+
 const unsigned int font[42][10] = {
     {0x0000, 0x7E00, 0xFF00, 0xC300, 0xC300, 0xC300, 0xC300, 0xC300, 0xFF00, 0x7E00}, // '0'
     {0x0000, 0x1800, 0x3800, 0x7800, 0x1800, 0x1800, 0x1800, 0x1800, 0xFF00, 0xFF00}, // '1'
@@ -125,46 +140,6 @@ void write_pixel(unsigned int color) {
     data(color & 0xFF);
 }
 
-// DRAW CHARACTER FUNCTION
-void draw_char(unsigned int x, unsigned int y, char c, unsigned int color) {
-    int index = c - '0';
-    set_column(x, x + 9); // Adjusted for larger font
-    set_row(y, y + 19); // Adjusted for larger font
-    command(0x2C); // RAMWR
-    for (int i = 0; i < 10; i++) {
-        uint16_t line = font[index][i];
-        for (int j = 0; j < 16; j++, line >>= 1) {
-            for (int k = 0; k < 2; k++) {
-                for (int l = 0; l < 2; l++) {
-                    set_column(x + (j * 2) + k, x + (j * 2) + k + 1);
-                    set_row(y + (i * 2) + l, y + (i * 2) + l + 1);
-                    if (line & 1) {
-                        write_pixel(color);
-                    } else {
-                        write_pixel(0x0000); // Background color (black)
-                    }
-                }
-            }
-        }
-    }
-}
-
-// DRAW STRING FUNCTION
-void draw_string(unsigned int x, unsigned int y, const char* str, unsigned int color) {
-    while (*str) {
-        draw_char(x, y, *str, color);
-        y += 20; // Move to the next character position downwards (20 for scaled font)
-        if (y + 10 >= 160) { // If we reach the end of the column
-            y = 0; // Reset y to the start of the next column
-            x += 20; // Move right by the width of the character (20 for scaled font)
-        }
-        str++;
-    }
-}
-
-// ST7735 INITIALIZATION FUNCTION
-// 
-
 // POPULATE SCREEN FUNCTION
 void populate_screen(unsigned int color) {
     set_column(0, 127);
@@ -174,17 +149,6 @@ void populate_screen(unsigned int color) {
         write_pixel(color);
     }
 }
-
-#define BLACK           0x0000
-#define WHITE           0xFFFF
-#define BLUE            0xF800
-#define GREEN           0x07E0
-#define RED             0x001F
-#define YELLOW          0x07FF
-#define PINK            0xF81F
-#define CYAN            0xFFE0
-#define MAGENTA         0xFC18
-#define GRAY            0x8410
 
 void draw_large_char(uint16_t x, uint16_t y, char c, uint16_t color, uint16_t bg, float scale) {
     // int index = c - ' ';
@@ -210,41 +174,6 @@ void draw_large_char(uint16_t x, uint16_t y, char c, uint16_t color, uint16_t bg
     }
 }
 
-// void draw_large_char(uint16_t x, uint16_t y, char c, uint16_t color, uint16_t bg, float scale) {
-//     int index = c; // Adjusted index for numbers TODO
-
-//     for (int i = 0; i < 10; i++) {
-//         uint16_t line = font[index][i];
-//         for (int j = 0; j < 16; j++) {
-//             uint16_t bit = (line >> (15 - j)) & 1;
-//             for (int k = 0; k < scale; k++) {
-//                 for (int l = 0; l < scale; l++) {
-//                     set_column(x + (j * scale) + k, x + (j * scale) + k + 1);
-//                     set_row(y + (i * scale) + l, y + (i * scale) + l + 1);
-//                     command(0x2C); // RAMWR
-//                     if (bit) {
-//                         write_pixel(color);
-//                     } else {
-//                         write_pixel(bg);
-//                     }
-//                 }
-//             }
-//         }
-//     }
-// }
-
-void draw_large_string(uint16_t x, uint16_t y, const char* str, uint16_t color, uint16_t bg, float scale, uint16_t maxY, uint16_t spacing) {
-    uint16_t pixel_size = (uint16_t)scale; // Calculate the size of each pixel block based on the scaling factor
-    while (*str) {
-        draw_large_char(x, y, *str, color, bg, scale);
-        y += (16 * pixel_size / 2) + spacing; // Move to the next character position downwards with spacing
-        if (y + (16 * pixel_size / 2) >= maxY) { // If we reach the end of the column
-            y = 0;    // Reset y to the start of the next column
-            x += (10 * pixel_size / 2) + spacing;  // Move right by the width of the character with spacing
-        }
-        str++;
-    }
-}
 
 void draw_line(uint16_t x, uint16_t y, uint16_t width, uint16_t height, uint16_t color) {
     for (uint16_t i = 0; i < width; i++) {
@@ -304,7 +233,7 @@ unsigned char stickFigureDown[12] = {
 
 void displayUpMan()   { 
     unsigned int current_line = 0;
-    int xVal = 30;
+    int xVal = 40;
     int yVal = 30; 
     for (unsigned int i = 0; i < 12; i++) {
         current_line = stickFigureUp[i];
@@ -315,7 +244,7 @@ void displayUpMan()   {
             }
             xVal+=5;
         }
-        xVal = 30;
+        xVal = 40;
         yVal += 5;
     }
     return; 
@@ -323,7 +252,7 @@ void displayUpMan()   {
 
 void displayUpManOff() {
     unsigned int current_line = 0;
-    int xVal = 30;
+    int xVal = 40;
     int yVal = 30;
     for (unsigned int i = 0; i < 12; i++) {
         current_line = stickFigureUp[i];
@@ -333,7 +262,7 @@ void displayUpManOff() {
             }
             xVal+=5;
         }
-        xVal = 30;
+        xVal = 40;
         yVal += 5;
     }
     return; 
@@ -342,7 +271,7 @@ void displayUpManOff() {
 
 void displayDownMan() { 
     unsigned int current_line = 0;
-    int xVal = 30;
+    int xVal = 40;
     int yVal = 30;
     for (unsigned int i = 0; i < 12; i++) {
         current_line = stickFigureDown[i];
@@ -352,7 +281,7 @@ void displayDownMan() {
             }
             xVal+=5;
         }
-        xVal = 30;
+        xVal = 40;
         yVal += 5;
     }
     return;   
@@ -360,7 +289,7 @@ void displayDownMan() {
 
 void displayDownManOff() {
     unsigned int current_line = 0;
-    int xVal = 30;
+    int xVal = 40;
     int yVal = 30;
     for (unsigned int i = 0; i < 12; i++) {
         current_line = stickFigureDown[i];
@@ -370,7 +299,7 @@ void displayDownManOff() {
             }
             xVal+=5;
         }
-        xVal = 30;
+        xVal = 40;
         yVal += 5;
     }
     return; 
@@ -379,7 +308,7 @@ void displayDownManOff() {
 
 void displaySideMan() { 
     unsigned int current_line = 0;
-    int xVal = 30;
+    int xVal = 40;
     int yVal = 30; 
     for (unsigned int i = 0; i < 12; i++) {
         current_line = stickFigureSide[i];
@@ -390,7 +319,7 @@ void displaySideMan() {
             }
             xVal+=5;
         }
-        xVal = 30;
+        xVal = 40;
         yVal += 5;
     } 
     return; 
@@ -398,7 +327,7 @@ void displaySideMan() {
 
 void displaySideManOff() {
     unsigned int current_line = 0;
-    int xVal = 30;
+    int xVal = 40;
     int yVal = 30; 
     for (unsigned int i = 0; i < 12; i++) {
         current_line = stickFigureSide[i];
@@ -409,62 +338,29 @@ void displaySideManOff() {
             }
             xVal+=5;
         }
-        xVal = 30;
+        xVal = 40;
         yVal += 5;
     } 
     return;
 }
 
+unsigned int redYlocation = 110;
+unsigned int redXlocation = 1;
+void displayRed() {
+    if(redXlocation < 128) {
+        draw_line(redXlocation, redYlocation, 10, 20, RED);
+        redXlocation+=10;
+    }
+}
 
+unsigned int greenYlocation = 1;
+unsigned int greenXlocation = 1;
+void displayGreen() {
+    if(greenXlocation < 128) {
+        draw_line(greenXlocation, greenYlocation, 10, 20, GREEN);
+        greenXlocation+=10;
+    }
+}
 
-
-void displayEarly(){ return; }
-void displayNice() { return; }
-void displayLate() { return; }
 
 #endif /* SPIAVR_H */
-
-// void draw_test(int num) {
-//     float size = 0.5;
-//     int size2 = 4.5;
-//     switch(num) {
-//         case 0:
-//             populate_screen(BLACK);
-//             draw_large_string(12, 25, "@", RED, BLACK, size, 200, 5);
-//             draw_large_string(32, 25, "O", RED, BLACK, size, 200, 5);
-//             draw_large_string(52, 25, "R", RED, BLACK, size, 200, 5);
-//             draw_large_string(72, 25, "N", RED, BLACK, size, 200, 5);
-//             draw_large_string(92, 25, "K", RED, BLACK, size, 200, 5);
-//             draw_large_string(10, 50, "I", YELLOW, BLACK, size2, 200, 5);
-//             draw_large_string(45, 50, "T", YELLOW, BLACK, size2, 200, 5);
-//             draw_large_string(75, 50, "!", YELLOW, BLACK, size2, 200, 5);
-//             break;
-//         case 1:
-//             draw_large_string(12, 25, "T", BLACK, BLACK, size, 200, 5);
-//             draw_large_string(34, 25, "W", BLACK, BLACK, size, 200, 5);
-//             draw_large_string(56, 25, "I", BLACK, BLACK, size, 200, 5);
-//             draw_large_string(78, 25, "S", BLACK, BLACK, size, 200, 5);
-//             draw_large_string(100, 25, "T", BLACK, BLACK, size, 200, 5);
-//             draw_large_string(10, 50, "I", BLACK, BLACK, size2, 200, 5);
-//             draw_large_string(45, 50, "T", BLACK, BLACK, size2, 200, 5);
-//             draw_large_string(75, 50, "!", BLACK, BLACK, size2, 200, 5);
-//             break;
-//         case 2:
-//             unsigned int current_line = 0;
-//             int xVal = 30;
-//             int yVal = 30;
-//             for (unsigned int i = 0; i < 12; i++) {
-//                 current_line = stickFigureSide[i];
-//                 for (unsigned int j = 0; j < 8; ++j ){
-//                     if (((current_line << j) &0x80) > 1) {
-//                         draw_large_string(xVal, yVal, "@", WHITE, BLACK, size, 200, 5);
-//                     }
-//                     xVal+=10;
-//                 }
-//                 xVal = 30;
-//                 yVal += 5;
-//             }
-
-//     }
-    
-// }
